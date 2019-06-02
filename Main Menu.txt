@@ -1,0 +1,79 @@
+/*
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
+package pkg2048;
+
+import java.awt.Color;
+import java.awt.Font;
+import java.awt.Graphics2D;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+
+/**
+ *
+ * @author hvtrung
+ */
+public class MainMenuPanel extends Panel {
+    
+    private Font titleF = Game.main.deriveFont(50f);
+    private Font authorF = Game.main.deriveFont(25f);
+    private String title = "2048 GAME";
+    private String author =  "By Tr - D - S";
+    private int buttonW = 220;
+    private int buttonL = 60;
+    private int spacing = 90;
+    
+    public MainMenuPanel(){
+        super();
+        //Button in Main Menu
+        Button playB = new Button(Game.WIDTH/2 - buttonW/2, 220, buttonW, buttonL);
+        Button leaderBoardsB = new Button(Game.WIDTH/2 - buttonW/2 ,playB.getY() + spacing, buttonW,buttonL);
+        Button quitB = new Button(Game.WIDTH/2 - buttonW/2,leaderBoardsB.getY() + spacing, buttonW, buttonL);
+        
+        playB.setText("Play Game");
+        leaderBoardsB.setText("LeaderBoard");
+        quitB.setText("Quit Game");
+        
+        playB.addActionListener(new ActionListener(){
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                Screen.getInstance().setCurrentPanele("Play Game");
+            }
+            
+        });
+        
+        leaderBoardsB.addActionListener(new ActionListener(){
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                    Screen.getInstance().setCurrentPanele("Leaderboards");
+            }
+            
+        });
+        
+        quitB.addActionListener(new ActionListener(){
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                System.exit(0);
+            }
+            
+        });
+        add(playB);
+        add(leaderBoardsB);
+        add(quitB);
+        
+    }
+    
+    @Override
+    public void render(Graphics2D g){
+        super.render(g);
+        g.setFont(titleF);
+        g.setColor(Color.GREEN);
+        g.drawString(title, Game.WIDTH / 2 - DrawUtils.getMessageWidth(title, titleF, g)/2, 150);
+        
+        g.setFont(authorF);
+        g.setColor(Color.PINK);
+        g.drawString(author, 20, Game.LENGTH - 10);
+    }
+}
