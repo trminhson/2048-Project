@@ -1,0 +1,497 @@
+/*
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
+package pkg2048;
+
+import java.awt.Color;
+import java.awt.Font;
+import java.awt.Graphics2D;
+import java.awt.event.KeyEvent;
+import java.awt.image.BufferedImage;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileWriter;
+import java.io.InputStreamReader;
+import java.util.Random;
+
+/**
+ *
+ * @author hvtrung
+ */
+public class GameBoard {
+
+    public static final int ROWS = 4;
+    public static final int COLMS = 4;
+
+    private final int startingTitle = 2;
+    private Tile[][] board;
+    private boolean lost;
+    private boolean won;
+
+    private BufferedImage gBoard; //gameing board
+    private BufferedImage fBoard; //which is game board and tiles on it 
+    private int x;
+    private int y;
+
+    private static final int SPACE = 10; //the space between tiles on game board = 10 pixel
+    public static int BOARD_WIDTH = (COLMS + 1) * SPACE + COLMS * Tile.WIDTH;
+    public static int BOARD_LENGTH = (ROWS + 1) * SPACE + ROWS * Tile.LENGTH;
+    private boolean hasStarted;
+    private int saveCount;
+    private ScoreManager scores;
+    private Leaderboards lBoard;
+
+    public GameBoard(int x, int y) {
+
+        this.x = x;
+        this.y = y;
+        board = new Tile[ROWS][COLMS];
+        gBoard = new BufferedImage(BOARD_WIDTH, BOARD_LENGTH, BufferedImage.TYPE_INT_RGB);
+        fBoard = new BufferedImage(BOARD_WIDTH, BOARD_LENGTH, BufferedImage.TYPE_INT_RGB);
+
+        createBoardImage();
+        lBoard = Leaderboards.getInstance();
+        lBoard.loadScore();
+        scores = new ScoreManager(this);
+        scores.setCurrentHighScore(lBoard.getHighScore());
+        if (scores.newGame()) {
+            start();
+            scores.saveGame();
+        } else {
+            for (int i = 0; i < scores.getBoard().length; i++) {
+                if (scores.getBoard()[i] == 0) {
+                    continue;
+                }
+                spawn(i / ROWS, i % COLMS, scores.getBoard()[i]);
+            }
+            lost = checkLost();
+            won = checkWon();
+        }
+    }
+
+    public void resest() {
+        board = new Tile[ROWS][COLMS];
+        start();
+        scores.saveGame();
+        lost = false;
+        won = false;
+        hasStarted = false;
+        saveCount = 0;
+    }
+
+    private void createBoardImage() // create a game board which has enought spaces for all tiles 
+    {
+        Graphics2D g = (Graphics2D) gBoard.getGraphics();
+        g.setColor(Color.GRAY);
+        g.fillRect(0, 0, BOARD_WIDTH, BOARD_LENGTH);
+        g.setColor(Color.PINK);
+
+        for (int row = 0; row < ROWS; row++) {
+            for (int colm = 0; colm < COLMS; colm++) {
+                int x = SPACE + SPACE * colm + Tile.WIDTH * colm;
+                int y = SPACE + SPACE * row + Tile.LENGTH * row;
+                g.fillRoundRect(x, y, Tile.WIDTH, Tile.LENGTH, Tile.ARC_WIDTH, Tile.ARC_LENGTH);
+
+            }
+        }
+        g.dispose();
+
+    }
+
+    private void start() {
+        for (int i = 0; i < startingTitle; i++) {
+            spawnRandom();
+        }
+    }
+
+    private void spawnRandom() {
+        Random random = new Random();
+        boolean notValid = true;
+
+        while (notValid) {
+            int location = random.nextInt(ROWS * COLMS); //random in rang of spot in the game board
+            int row = location / ROWS;  //define the row of the tile
+            int col = location % COLMS; // define the column of the tile
+            Tile current = board[row][col];
+            if (current == null) // check the spot
+            {
+                int value = random.nextInt(10) < 9 ? 2 : 4; // random a number from range 0 - 10 : if less than 9 tile value = 2 else value = 4
+                Tile tile = new Tile(value, getTileX(col), getTileY(row));
+                board[row][col] = tile;
+                notValid = false;
+            }
+
+        }
+    }
+
+    public int getTileX(int col) {
+        return SPACE + col * Tile.WIDTH + col * SPACE;
+    }
+
+    public int getTileY(int row) {
+        return SPACE + row * Tile.LENGTH + row * SPACE;
+    }
+
+    public void render(Graphics2D g) // create the final board which contain game board and tiles on it board
+    {
+        Graphics2D g2d = (Graphics2D) fBoard.getGraphics();
+        g2d.drawImage(gBoard, 0, 0, null);
+
+        for (int row = 0; row < ROWS; row++) {
+            for (int col = 0; col < COLMS; col++) {
+                Tile current = board[row][col];
+                if (current == null) {
+                    continue;
+                }
+                current.render(g2d);
+            }
+        }
+
+        g.drawImage(fBoard, x, y, null);
+        g2d.dispose();
+
+    }
+
+    public void update() {
+        saveCount++;
+        if(saveCount >= 120){
+            saveCount =0;
+            scores.saveGame();
+        }
+        
+        checkKey();
+
+       if(scores.getCurrentScore() > scores.getCurrentHighScore()){
+           scores.setCurrentHighScore(scores.getCurrentScore());
+       }
+
+        for (int row = 0; row < ROWS; row++) {
+            for (int col = 0; col < COLMS; col++) {
+                Tile current = board[row][col];
+                if (current == null) {
+                    continue;
+                }
+                current.update();
+
+                resetPosition(current, row, col);
+                if (current.getValue() == 2048) {
+                    setWon(true);
+                }
+            }
+        }
+    }
+
+    private void resetPosition(Tile current, int row, int col) {
+        if (current == null) {
+            return;
+        }
+        int x = getTileX(col);
+        int y = getTileY(row);
+
+        int disX = current.getX() - x;
+        int disY = current.getY() - y;
+
+        if (Math.abs(disX) < Tile.SLIDE_SPEED) {
+            current.setX(current.getX() - disX);
+        }
+
+        if (Math.abs(disY) < Tile.SLIDE_SPEED) {
+            current.setY(current.getY() - disY);
+        }
+
+        if (disX < 0) {
+            current.setX(current.getX() + Tile.SLIDE_SPEED);
+        }
+        if (disY < 0) {
+            current.setY(current.getY() + Tile.SLIDE_SPEED);
+        }
+        if (disX > 0) {
+            current.setX(current.getX() - Tile.SLIDE_SPEED);
+        }
+        if (disY > 0) {
+            current.setY(current.getY() - Tile.SLIDE_SPEED);
+        }
+    }
+
+    private void checkKey() {
+        if (keyboard.typed(KeyEvent.VK_LEFT)) //move tiles left
+        {
+            moveTiles(Direction.LEFT);
+            if (!hasStarted) {
+                hasStarted = !lost;
+            }
+        }
+        if (keyboard.typed(KeyEvent.VK_RIGHT)) //move tiles right
+        {
+            moveTiles(Direction.RIGHT);
+            if (!hasStarted) {
+                hasStarted = !lost;
+            }
+        }
+        if (keyboard.typed(KeyEvent.VK_UP)) //move tiles up
+        {
+            moveTiles(Direction.UP);
+            if (!hasStarted) {
+                hasStarted = !lost;
+            }
+        }
+        if (keyboard.typed(KeyEvent.VK_DOWN)) //move tiles down
+        {
+            moveTiles(Direction.DOWN);
+            if (!hasStarted) {
+                hasStarted = !lost;
+            }
+        }
+    }
+
+    public int getHighestTileValue(){
+        int value = 2;
+        for(int row = 0; row< ROWS;row ++){
+            for(int col =0; col< COLMS; col++){
+                if(board[row][col] == null) continue;
+                if(board[row][col].getValue() > value) 
+                    value =board[row][col].getValue();
+            }
+        }
+        return value;
+    }
+    
+    public boolean isLost(){
+        return lost;
+    }
+    public void setLost(boolean lost){
+        if(!this.lost && lost){
+            lBoard.addTiles(getHighestTileValue());
+            lBoard.addScore(scores.getCurrentScore());
+            lBoard.saveScore();
+        }
+        this.lost = lost;
+    }
+    
+    public boolean isWon(){
+        return won;
+    }
+    public void setWon(boolean won){
+        if(!this.won && won){
+            lBoard.saveScore();
+        }
+        this.won = won;
+    }
+    public ScoreManager getScores(){
+        return scores;
+    }
+    private void moveTiles(Direction direction) {
+        boolean movable = false;
+        int xDirection = 0;
+        int yDirection = 0;
+
+        if (direction == Direction.LEFT) {
+            xDirection = -1;
+            for (int row = 0; row < ROWS; row++) {
+                for (int col = 0; col < COLMS; col++) {
+                    if (!movable) {
+                        movable = move(row, col, xDirection, yDirection, direction);
+                    } else {
+                        move(row, col, xDirection, yDirection, direction);
+                    }
+                }
+            }
+        } else if (direction == Direction.RIGHT) {
+            xDirection = 1;
+            for (int row = 0; row < ROWS; row++) {
+                for (int col = COLMS - 1; col >= 0; col--) {
+                    if (!movable) {
+                        movable = move(row, col, xDirection, yDirection, direction);
+                    } else {
+                        move(row, col, xDirection, yDirection, direction);
+                    }
+                }
+            }
+        } else if (direction == Direction.UP) {
+            yDirection = -1;
+            for (int row = 0; row < ROWS; row++) {
+                for (int col = 0; col < COLMS; col++) {
+                    if (!movable) {
+                        movable = move(row, col, xDirection, yDirection, direction);
+                    } else {
+                        move(row, col, xDirection, yDirection, direction);
+                    }
+                }
+            }
+        } else if (direction == Direction.DOWN) {
+            yDirection = 1;
+            for (int row = ROWS - 1; row >= 0; row--) {
+                for (int col = 0; col < COLMS; col++) {
+                    if (!movable) {
+                        movable = move(row, col, xDirection, yDirection, direction);
+                    } else {
+                        move(row, col, xDirection, yDirection, direction);
+                    }
+                }
+            }
+        } else {
+            System.out.println(direction + " is not valid");
+        }
+
+        for (int row = 0; row < ROWS; row++) {
+            for (int col = 0; col < COLMS; col++) {
+                Tile current = board[row][col];
+                if (current == null) {
+                    continue;
+                }
+                current.setCanCombine(true);
+            }
+        }
+
+        if (movable) {
+            spawnRandom();
+            setLost(checkLost());
+        }
+    }
+
+    private boolean move(int row, int col, int xDirection, int yDirection, Direction direction) {
+        boolean movable = false;
+
+        Tile current = board[row][col];
+        if (current == null) {
+            return false;
+        }
+        boolean move = true;
+        int newCol = col;
+        int newRow = row;
+        while (move) {
+            newCol += xDirection;
+            newRow += yDirection;
+            if (checkOutOfBounds(direction, newRow, newCol)) {
+                break;
+            }
+            if (board[newRow][newCol] == null) {
+                board[newRow][newCol] = current;
+                board[newRow - yDirection][newCol - xDirection] = null;
+                board[newRow][newCol].setNextPosition(new Point(newRow, newCol));
+                movable = true;
+            } else if (board[newRow][newCol].getValue() == current.getValue() && board[newRow][newCol].canCombine()) {
+                board[newRow][newCol].setCanCombine(false);
+                board[newRow][newCol].setValue(board[newRow][newCol].getValue() * 2);
+                movable = true;
+                board[newRow - yDirection][newCol - xDirection] = null;
+                board[newRow][newCol].setNextPosition(new Point(newRow, newCol));
+                board[newRow][newCol].setCombineAnimation(true);
+                scores.setCurrentScore( scores.getCurrentScore() + board[newRow][newCol].getValue()); 
+                
+            } else {
+                move = false;
+            }
+        }
+
+        return movable;
+    }
+
+    private boolean checkOutOfBounds(Direction direction, int row, int col) {
+        if (direction == Direction.LEFT) {
+            return col < 0;
+        } else if (direction == Direction.RIGHT) {
+            return col > COLMS - 1;
+        } else if (direction == Direction.UP) {
+            return row < 0;
+        } else if (direction == Direction.DOWN) {
+            return row > ROWS - 1;
+        }
+        return false;
+    }
+
+    private boolean checkLost() {
+        for (int row = 0; row < ROWS; row++) {
+            for (int col = 0; col < COLMS; col++) {
+                if (board[row][col] == null) {
+                    return false;
+                }
+                boolean canCombine = checkSurroundingTIles(row,col,board[row][col]);
+                if(canCombine) {
+                    return false;
+                }
+            }
+        }
+           return true;
+    }
+
+    private boolean checkWon(){
+        for(int row =0; row < ROWS; row ++){
+            for(int col =0; col < COLMS; col++){
+                if(board[row][col] == null) 
+                    continue;
+                if(board[row][col].getValue() >= 2048)
+                    return true;
+            }
+        }
+        return false;
+    }
+    private boolean checkSurroundingTIles(int row, int col, Tile current) {
+        if (row > 0) {
+            Tile check = board[row - 1][col];
+            if (check == null) {
+                return true;
+            }
+            if (current.getValue() == check.getValue()) {
+                return true;
+            }
+        }
+        if (row < ROWS - 1) {
+            Tile check = board[row + 1][col];
+            if (check == null) {
+                return true;
+            }
+            if (current.getValue() == check.getValue()) {
+                return true;
+            }
+        }
+        if (col > 0) {
+            Tile check = board[row][col - 1];
+            if (check == null) {
+                return true;
+            }
+            if (current.getValue() == check.getValue()) {
+                return true;
+            }
+        }
+        if (col < COLMS - 1) {
+            Tile check = board[row][col + 1];
+            if (check == null) {
+                return true;
+            }
+            if (current.getValue() == check.getValue()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public Tile[][] getBoard() {
+        return board;
+    }
+
+    private void spawn(int row, int col, int value) {
+        board[row][col] = new Tile(value, getTileX(col), getTileY(row));
+    }
+
+    public int getX() {
+        return x;
+    }
+
+    public void setX(int x) {
+        this.x = x;
+    }
+
+    public int getY() {
+        return y;
+    }
+
+    public void setY(int y) {
+        this.y = y;
+    }
+
+}
